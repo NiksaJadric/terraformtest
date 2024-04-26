@@ -1,0 +1,40 @@
+name: Deploy EKS Cluster
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  terraform:
+    name: Terraform Deployment
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.0.0
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+
+      - name: Get Kubeconfig
+        run: echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml
+        env:
+          KUBECONFIG: ${{ steps.terraform.outputs.kubeconfig }}
+
+      - name: Configure kubectl
+        run: kubectl config set-cluster eks-cluster --server=$(terraform output -raw kubeconfig | yq eval '.clusters[0].cluster.server' -) && kubectl config set-context eks-cluster --cluster=eks-cluster && kubectl config set-credentials user --token=$(terraform output -raw kubeconfig | yq eval '.users[0].user.token' -) && kubectl config set-context eks-cluster --user=user && kubectl config use-context eks-cluster
+
+      - name: Verify kubectl configuration
+        run: kubectl get svc
